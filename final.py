@@ -31,7 +31,7 @@ y = y.loc[common_samples]
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
-
+# scaling data to prevent model from thinking certain genes are more important than others b/c of high expression
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
@@ -39,13 +39,14 @@ X_test_scaled = scaler.transform(X_test)
 X_train_scaled = pd.DataFrame(X_train_scaled, index=X_train.index, columns=X_train.columns)
 X_test_scaled = pd.DataFrame(X_test_scaled, index=X_test.index, columns=X_test.columns)
 
+# filtering to top K genes to correct for potential noise from 1000s of other genes
 K = 300
 selector = SelectKBest(score_func=mutual_info_classif, k=K)
 X_train_selected = selector.fit_transform(X_train_scaled, y_train)
 selected_genes = X_train.columns[selector.get_support()]
 X_test_selected = X_test_scaled[selected_genes]
 
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42) # repeat testing while forcing same % of early and developed patients
 
 smote = SMOTE(random_state=42) # trying to fix data imbalance w/ smote (idk i looked it up)
 X_train_smote, y_train_smote = smote.fit_resample(X_train_selected, y_train)
