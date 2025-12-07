@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV, StratifiedKFold
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
-from sklearn.metrics import roc_auc_score, accuracy_score, classification_report
+from sklearn.metrics import classification_report
 from sklearn.feature_selection import SelectKBest, mutual_info_classif
+from imblearn.over_sampling import SMOTE
 
-data = pd.read_csv("TCGA-BRCA.star_tpm.tsv", sep="\t", index_col=0).T
+data = pd.read_csv("TCGA-BRCA.star_tpm.tsv", sep="\t", index_col=0).T # transposing b/c file has rows=genes, col=patients
 target = pd.read_csv("TCGA-BRCA.clinical.tsv", sep="\t", index_col=0)["ajcc_pathologic_stage.diagnoses"]
 
 def group_stage(stage): # group data to either early stage or late stage BC
@@ -23,7 +24,7 @@ def group_stage(stage): # group data to either early stage or late stage BC
     
 y = target.apply(group_stage).dropna()
 
-common_samples = data.index.intersection(y.index)
+common_samples = data.index.intersection(y.index) # filter data based on patients in clinical & gene expression files
 X = data.loc[common_samples]
 y = y.loc[common_samples]
 
@@ -46,32 +47,21 @@ X_test_selected = X_test_scaled[selected_genes]
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 
-rf_param_grid = {
-    'n_estimators': [100],
-    'max_depth': [10, None],
-}
+smote = SMOTE(random_state=42) # trying to fix data imbalance w/ smote (idk i looked it up)
+X_train_smote, y_train_smote = smote.fit_resample(X_train_selected, y_train)
 
-rf = RandomForestClassifier(n_estimators=200, class_weight="balanced", random_state=42)
-rf.fit(X_train_selected, y_train)
+rf = RandomForestClassifier(n_estimators=200, random_state=42)
+rf.fit(X_train_smote, y_train_smote)
 
-# SVM 
-svm = SVC(kernel="linear", class_weight="balanced", random_state=42, probability=True)
-svm.fit(X_train_selected, y_train)
+svm = SVC(kernel="linear", random_state=42, probability=True)
+svm.fit(X_train_smote, y_train_smote)
 
-test_results = {}
+test_results = {} # display results
 for name, model in [("RF_Balanced", rf), ("SVM_Balanced", svm)]:
 
     # Get predictions
     y_pred = model.predict(X_test_selected)
     y_proba = model.predict_proba(X_test_selected)[:, 1]
-
-    # Calculate metrics
-    auc = roc_auc_score(y_test, y_proba)
-    acc = accuracy_score(y_test, y_pred)
-    
-    test_results[name] = {'AUROC': auc, 'Accuracy': acc}
     
     print(f"\nModel: {name}")
-    print(f"AUROC: {auc:.4f}")
-    print(f"Accuracy: {acc:.4f}")
     print(classification_report(y_test, y_pred))
