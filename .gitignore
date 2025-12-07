@@ -1,0 +1,3 @@
+*.tsv
+venv/
+*.pyc
